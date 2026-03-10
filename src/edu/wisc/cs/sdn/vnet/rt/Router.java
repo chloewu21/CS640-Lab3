@@ -122,9 +122,9 @@ public class Router extends Device
 			return; // drop if no match
 		}
 
-		// if (longestMatch.getInterface().getName().equals(inIface.getName())) {
-		// 	return; // drop if outgoing interface is same as incoming
-		// }
+		if (longestMatch.getInterface().getName().equals(inIface.getName())) {
+			return; // drop if outgoing interface is same as incoming
+		}
 
 
 		// Set source MAC address
