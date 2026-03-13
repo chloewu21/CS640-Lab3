@@ -21,6 +21,12 @@ public class RouteEntry
 	/** Router interface out which packets should be sent to reach
 	 * the destination or gateway */
 	private Iface iface;
+
+	/** RIP metric/hop count */
+	private int metric;
+
+	/** Last update time */
+	private long lastUpdate;
 	
 	/**
 	 * Create a new route table entry.
@@ -29,14 +35,17 @@ public class RouteEntry
 	 * @param maskAddress subnet mask
 	 * @param iface the router interface out which packets should 
 	 *        be sent to reach the destination or gateway
+	 * @param metric the RIP metric/hop count for this route
 	 */
 	public RouteEntry(int destinationAddress, int gatewayAddress, 
-			int maskAddress, Iface iface)
+			int maskAddress, Iface iface, int metric)
 	{
 		this.destinationAddress = destinationAddress;
 		this.gatewayAddress = gatewayAddress;
 		this.maskAddress = maskAddress;
 		this.iface = iface;
+		this.metric = metric;
+		this.lastUpdate = System.currentTimeMillis();
 	}
 	
 	/**
@@ -69,6 +78,18 @@ public class RouteEntry
 
 	public void setInterface(Iface iface)
 	{ this.iface = iface; }
+
+	public int getMetric()
+	{ return this.metric; }
+
+	public void setMetric(int metric)
+	{ this.metric = metric; }
+
+	public long getLastUpdate()
+	{ return this.lastUpdate; }
+
+	public void setLastUpdate()
+	{ this.lastUpdate = System.currentTimeMillis(); }
 	
 	public String toString()
 	{

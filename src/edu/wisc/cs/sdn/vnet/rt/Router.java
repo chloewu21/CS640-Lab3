@@ -6,6 +6,9 @@ import edu.wisc.cs.sdn.vnet.Iface;
 
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.UDP;
+import net.floodlightcontroller.packet.RIPv2;
+import net.floodlightcontroller.packet.RIPv2Entry;
 
 /**
  * @author Aaron Gember-Jacobson and Anubhavnidhi Abhashkumar
@@ -17,6 +20,11 @@ public class Router extends Device
 	
 	/** ARP cache for the router */
 	private ArpCache arpCache;
+
+	/** RIP multicast address */
+	private static final int RIP_MULTICAST_ADDRESS = IPv4.toIPv4Address("224.0.0.9");
+	/** RIP broadcast MAC address */
+	private static final byte[] RIP_BROADCAST_MAC = Ethernet.toMACAddress("FF:FF:FF:FF:FF:FF");
 	
 	/**
 	 * Creates a router for a specific host.
@@ -166,4 +174,26 @@ public class Router extends Device
 
 		/********************************************************************/
 	}
+
+	public void startRIP() {
+		// Add direct neighbors to routing table
+		for (Iface iface : this.getInterfaces().values()) {
+			int subnet = iface.getIpAddress() & iface.getSubnetMask();
+			this.routeTable.insert(subnet, iface.getSubnetMask(), 0, iface);
+	}
+
+	public void handleRIPPacket(Ethernet etherPacket, Iface inIface) {
+
+	}
+
+	public void sendRIPRequest(Iface outIface) {
+
+	}
+
+	public void sendRipResponse() {
+
+	}
+
+
+
 }

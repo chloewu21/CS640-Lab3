@@ -146,7 +146,7 @@ public class RouteTable
 			}
 			
 			// Add an entry to the route table
-			this.insert(dstIp, gwIp, maskIp, iface);
+			this.insert(dstIp, gwIp, maskIp, iface, 1); // hop count of 1 for static routes
 		}
 	
 		// Close the file
@@ -162,9 +162,9 @@ public class RouteTable
 	 * @param iface router interface out which to send packets to reach the 
 	 *		destination or gateway
 	 */
-	public void insert(int dstIp, int gwIp, int maskIp, Iface iface)
+	public void insert(int dstIp, int gwIp, int maskIp, Iface iface, int metric)
 	{
-		RouteEntry entry = new RouteEntry(dstIp, gwIp, maskIp, iface);
+		RouteEntry entry = new RouteEntry(dstIp, gwIp, maskIp, iface, metric);
 		synchronized(this.entries)
 		{ 
 			this.entries.add(entry);
@@ -226,6 +226,12 @@ public class RouteTable
 			}
 		}
 		return null;
+	}
+
+	public List<RouteEntry> getEntries() {
+		synchronized(this.entries) {
+			return new LinkedList<RouteEntry>(this.entries);
+		}
 	}
 	
 	public String toString()
