@@ -64,10 +64,12 @@ public class Switch extends Device
 
 		// Forward the packet
 		if (forwardingTable.containsKey(dstMac)) {
-			sendPacket(etherPacket, interfaces.get(forwardingTable.get(dstMac).iface));
-			// String outIfaceName = forwardingTable.get(dstMac).iface;
-			// if (!outIfaceName.equals(inIface.getName())) {
-			// 	sendPacket(etherPacket, interfaces.get(outIfaceName));
+			String outIfaceName = forwardingTable.get(dstMac).iface;
+			if (!outIfaceName.equals(inIface.getName())) { // only forward if outgoing interface is different from incoming
+				Iface outIface = this.getInterface(outIfaceName);
+				sendPacket(etherPacket, outIface);
+			}
+			// sendPacket(etherPacket, interfaces.get(forwardingTable.get(dstMac).iface));
 		} else { // send the packet out to all interfaces except the incoming one
 			for (Iface iface : interfaces.values()) {
 				if (!iface.getName().equals(inIface.getName())) {
@@ -75,6 +77,5 @@ public class Switch extends Device
 				}
 			}
 		}
-			
 	}
 }
