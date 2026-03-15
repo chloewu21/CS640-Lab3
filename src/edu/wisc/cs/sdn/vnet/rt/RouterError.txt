@@ -1,0 +1,195 @@
+I checked your current Router.java against the lab requirements and there are a few important logic issues. The biggest ones are around checksum verification, forwarding behavior, and how RIP responses are handled, so I’m going to point out exactly what is wrong and show you the corrected version instead of making you debug it blindly.
+
+Thought for 1m 8s
+
+No — it is close, but it is not fully correct yet.
+
+The biggest assignment mismatches are these:
+
+RIP reply to a request is wrong.
+For a specific RIP request, the response must go to the requesting router’s IP and MAC, not to 224.0.0.9 / broadcast MAC. Your current handleRIPPacket() does:
+
+sendRIPResponse(inIface);
+
+but your sendRIPResponse(Iface outIface) always sends multicast/broadcast. The lab explicitly says request-triggered replies must target the sender’s interface IP and MAC.
+
+You are using the wrong gateway when learning routes from RIP.
+This line is wrong:
+
+int gateway = inIface.getIpAddress();
+
+It should be the sender router’s IP, i.e.
+
+int gateway = ipv4.getSourceAddress();
+
+The gateway for a learned RIP route is the neighbor who advertised it, not your own incoming interface IP.
+
+You only update a route if the new metric is smaller.
+That is not enough. If the route was originally learned from the same neighbor, you must also update it when the metric changes, and refresh its timer. Otherwise worse metrics or unreachable routes from that same neighbor will never be reflected correctly.
+
+Forwarding logic regressed from Assignment 2 behavior.
+Your handlePacket() currently just drops packets that are for the router:
+
+if (payload.getDestinationAddress() == iface.getIpAddress()) {
+    return;
+}
+
+That means no local handling for ICMP echo requests, no ICMP errors, etc. The assignment says to reuse your Assignment 2 router codebase and add RIP, not replace core router behavior with simpler drop logic.
+
+You decrement TTL too early.
+TTL should be decremented only when forwarding, not before checking whether the packet is actually addressed to one of the router’s own interfaces.
+
+Dropping when outgoing interface equals incoming interface is not generally correct.
+This line:
+
+if (longestMatch.getInterface().getName().equals(inIface.getName())) {
+    return;
+}
+
+can incorrectly drop valid packets. A router may legitimately forward out the same interface in some cases.
+
+RIP timeout behavior needs to apply only to learned routes.
+You correctly skip routes with gateway 0 in removeStaleRoutes(), which matches the requirement that directly reachable subnets must never be removed.
+That part is good.
+
+Your startup behavior is mostly right.
+Adding directly connected subnets, sending RIP requests on startup, and sending unsolicited RIP responses every 10 seconds matches the lab.
+
+The most important fixes are below.
+
+Fix 1: learn routes via the sender IP, not your own interface IP
+
+In handleRIPPacket() change:
+
+int gateway = inIface.getIpAddress();
+
+to:
+
+int gateway = ipv4.getSourceAddress();
+
+Also make the destination network normalized:
+
+int dest = entry.getAddress() & entry.getSubnetMask();
+Fix 2: update routes if they came from the same neighbor
+
+Replace your response-processing block with this logic:
+
+RouteEntry existingEntry = this.routeTable.find(dest, mask);
+
+if (newMetric >= 16) {
+    if (existingEntry != null && existingEntry.getGatewayAddress() == gateway) {
+        this.routeTable.remove(dest, mask);
+    }
+    continue;
+}
+
+if (existingEntry == null) {
+    this.routeTable.insert(dest, gateway, mask, inIface, newMetric);
+}
+else if (existingEntry.getGatewayAddress() == gateway) {
+    existingEntry.setGatewayAddress(gateway);
+    existingEntry.setInterface(inIface);
+    existingEntry.setMetric(newMetric);
+    existingEntry.setLastUpdate();
+}
+else if (newMetric < existingEntry.getMetric()) {
+    existingEntry.setGatewayAddress(gateway);
+    existingEntry.setInterface(inIface);
+    existingEntry.setMetric(newMetric);
+    existingEntry.setLastUpdate();
+}
+Fix 3: send RIP response to the requester’s IP/MAC when replying to a request
+
+Change your request handling from:
+
+if (rip.getCommand() == RIPv2.COMMAND_REQUEST) {
+    sendRIPResponse(inIface);
+    return;
+}
+
+to something like:
+
+if (rip.getCommand() == RIPv2.COMMAND_REQUEST) {
+    sendRIPResponseToRequester(
+        inIface,
+        ipv4.getSourceAddress(),
+        etherPacket.getSourceMACAddress()
+    );
+    return;
+}
+
+Then add a new method:
+
+public void sendRIPResponseToRequester(Iface outIface, int dstIp, byte[] dstMac)
+{
+    RIPv2 ripResponse = new RIPv2();
+    ripResponse.setCommand(RIPv2.COMMAND_RESPONSE);
+
+    LinkedList<RIPv2Entry> entries = new LinkedList<>();
+    for (RouteEntry route : this.routeTable.getEntries()) {
+        RIPv2Entry entry = new RIPv2Entry();
+        entry.setAddress(route.getDestinationAddress());
+        entry.setSubnetMask(route.getMaskAddress());
+        entry.setNextHopAddress(route.getGatewayAddress());
+        entry.setMetric(Math.min(route.getMetric(), 16));
+        entries.add(entry);
+    }
+    ripResponse.setEntries(entries);
+
+    UDP udp = new UDP();
+    udp.setSourcePort(UDP.RIP_PORT);
+    udp.setDestinationPort(UDP.RIP_PORT);
+    udp.setPayload(ripResponse);
+
+    IPv4 ipv4 = new IPv4();
+    ipv4.setSourceAddress(outIface.getIpAddress());
+    ipv4.setDestinationAddress(dstIp);
+    ipv4.setTtl((byte)1);
+    ipv4.setProtocol(IPv4.PROTOCOL_UDP);
+    ipv4.setPayload(udp);
+
+    Ethernet ether = new Ethernet();
+    ether.setEtherType(Ethernet.TYPE_IPv4);
+    ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
+    ether.setDestinationMACAddress(dstMac);
+    ether.setPayload(ipv4);
+
+    sendPacket(ether, outIface);
+}
+Fix 4: keep your Assignment 2 forwarding/local-delivery logic
+
+Your current handlePacket() is too simplified. The safest fix is:
+
+keep your RIP detection near the top
+
+but otherwise restore your Assignment 2 router behavior for:
+
+packets destined to the router
+
+TTL expiration
+
+ICMP handling
+
+forwarding
+
+At minimum, do not just drop packets addressed to the router.
+
+Fix 5: do not decrement TTL before deciding whether the packet is local
+
+Move TTL decrement so it happens only in the forwarding path.
+
+Verdict
+
+So the answer is: no, this Router.java is not fully correct yet.
+
+The two most critical bugs are:
+
+wrong learned gateway (inIface.getIpAddress() instead of ipv4.getSourceAddress())
+
+wrong RIP reply destination for RIP requests
+
+Those alone will break RIP behavior badly.
+
+Your startRIP() and periodic update idea are fine, and your RouteTable.java is mostly okay for this assignment. The main work now is fixing handleRIPPacket() and restoring proper non-RIP router behavior in handlePacket().
+
+Send me your current full Router.java from Assignment 2 if you want me to show you exactly which parts to keep and exactly which RIP parts to splice in.
