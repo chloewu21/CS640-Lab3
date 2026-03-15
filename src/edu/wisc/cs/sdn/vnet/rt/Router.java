@@ -236,6 +236,7 @@ public class Router extends Device
 		ether.setEtherType(Ethernet.TYPE_IPv4);
 		ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
 		ether.setDestinationMACAddress(Ethernet.toMACAddress("FF:FF:FF:FF:FF:FF")); // broadcast MAC address
+		System.out.println("Sent RIP request on " + outIface.getName());
 		ether.setPayload(ipv4);
 
 		// Send the packet
