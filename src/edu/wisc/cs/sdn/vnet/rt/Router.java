@@ -291,6 +291,47 @@ public class Router extends Device
 		sendPacket(ether, outIface);
 	}
 
+	public void sendRIPResponseUnicast(Iface outIface, int destIp, byte[] destMac) {
+		// Create RIPv2 response packet
+		RIPv2 ripResponse = new RIPv2();
+		ripResponse.setCommand(RIPv2.COMMAND_RESPONSE);
+
+		LinkedList<RIPv2Entry> entries = new LinkedList<>();
+		for (RouteEntry route : this.routeTable.getEntries()) {
+			RIPv2Entry entry = new RIPv2Entry();
+			entry.setAddress(route.getDestinationAddress());
+			entry.setSubnetMask(route.getMaskAddress());
+			entry.setNextHopAddress(route.getGatewayAddress());
+			entry.setMetric(Math.min(route.getMetric(), 16));
+			entries.add(entry);
+		}
+		ripResponse.setEntries(entries);
+
+		// Create UDP packet
+		UDP udp = new UDP();
+		udp.setSourcePort(UDP.RIP_PORT);
+		udp.setDestinationPort(UDP.RIP_PORT);
+		udp.setPayload(ripResponse);
+
+		// Create IPv4 packet
+		IPv4 ipv4 = new IPv4();
+		ipv4.setSourceAddress(outIface.getIpAddress());
+		ipv4.setDestinationAddress(destIp); // IP of requester
+		ipv4.setTtl((byte) 1);
+		ipv4.setProtocol(IPv4.PROTOCOL_UDP);
+		ipv4.setPayload(udp);
+
+		// Create Ethernet frame
+		Ethernet ether = new Ethernet();
+		ether.setEtherType(Ethernet.TYPE_IPv4);
+		ether.setSourceMACAddress(outIface.getMacAddress().toBytes());		
+		ether.setDestinationMACAddress(destMac); // MAC of requester
+		ether.setPayload(ipv4);
+		
+		// Send the packet
+		sendPacket(ether, outIface);
+	}
+
 	public void handleRIPPacket(Ethernet etherPacket, Iface inIface) {
 		// Unwrap the packet to get the RIPv2 payload
 		IPv4 ipv4 = (IPv4) etherPacket.getPayload();
@@ -299,7 +340,7 @@ public class Router extends Device
 
 		// Check if packet is RIP request
 		if (rip.getCommand() == RIPv2.COMMAND_REQUEST) {
-			sendRIPResponse(inIface); // send response to requester
+			sendRIPResponseUnicast(inIface, ipv4.getSourceAddress(), etherPacket.getSourceMACAddress()); // send response to requester
 			return;
 		}
 
@@ -313,8 +354,8 @@ public class Router extends Device
 				}
 				int dest = entry.getAddress();
 				int mask = entry.getSubnetMask();
-				int gateway = inIface.getIpAddress();
-				// int gateway = ipv4.getSourceAddress(); // set gateway to IP address of sender
+				// int gateway = inIface.getIpAddress();
+				int gateway = ipv4.getSourceAddress(); // set gateway to IP address of sender
 				RouteEntry existingEntry = this.routeTable.find(dest, mask);
 				if (existingEntry == null) {
 					this.routeTable.insert(dest, gateway, mask, inIface, newMetric);
