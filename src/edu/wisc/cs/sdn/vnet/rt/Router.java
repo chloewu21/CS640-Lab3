@@ -236,11 +236,12 @@ public class Router extends Device
 		ether.setEtherType(Ethernet.TYPE_IPv4);
 		ether.setSourceMACAddress(outIface.getMacAddress().toBytes());
 		ether.setDestinationMACAddress(Ethernet.toMACAddress("FF:FF:FF:FF:FF:FF")); // broadcast MAC address
-		System.out.println("Sent RIP request on " + outIface.getName());
 		ether.setPayload(ipv4);
 
 		// Send the packet
 		sendPacket(ether, outIface);
+		System.out.println("Sent RIP request on " + outIface.getName());
+
 	}
 
 	public void sendRIPResponseToAllNeighbors() {
@@ -304,6 +305,7 @@ public class Router extends Device
 
 		// If packet is RIP response, update routing table with new entries
 		else if (rip.getCommand() == RIPv2.COMMAND_RESPONSE) {
+			System.out.println("Received RIP response from " + IPv4.fromIPv4Address(ipv4.getSourceAddress()));
 			for (RIPv2Entry entry : rip.getEntries()) {
 				int newMetric = entry.getMetric() + 1; // add 1 to metric (number of hops) 
 				if (newMetric > 16) {
@@ -311,16 +313,21 @@ public class Router extends Device
 				}
 				int dest = entry.getAddress();
 				int mask = entry.getSubnetMask();
-				int gateway = ipv4.getSourceAddress(); // set gateway to IP address of sender
+				int gateway = inIface.getIpAddress();
+				// int gateway = ipv4.getSourceAddress(); // set gateway to IP address of sender
 				RouteEntry existingEntry = this.routeTable.find(dest, mask);
 				if (existingEntry == null) {
 					this.routeTable.insert(dest, gateway, mask, inIface, newMetric);
+					System.out.println("Added new route to " + IPv4.fromIPv4Address(dest) + "/" + IPv4.fromIPv4Address(mask) +
+                       " via " + IPv4.fromIPv4Address(gateway) + " metric " + newMetric);
 				}
 				else {
 					if (newMetric < existingEntry.getMetric()) { // update if new metric is smaller
 						existingEntry.setGatewayAddress(gateway);
 						existingEntry.setInterface(inIface);
 						existingEntry.setMetric(newMetric);
+						System.out.println("Updated route to " + IPv4.fromIPv4Address(dest) + "/" + IPv4.fromIPv4Address(mask) +
+                           " via " + IPv4.fromIPv4Address(gateway) + " metric " + newMetric);
 					}
 					existingEntry.setLastUpdate(); // refresh timer
 				}
